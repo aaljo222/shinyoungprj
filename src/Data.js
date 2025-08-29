@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { countArea, createParkInfo, clock } from "./api/DataApi";
 
 // 아이콘 (Font Awesome 6)
@@ -9,20 +10,12 @@ import {
   FaCarSide, // 경차
 } from "react-icons/fa6";
 
-// ✅ 배경 슬라이드용 이미지 3장 (원하는 파일명/경로로 교체)
+// ✅ 배경 슬라이드용 이미지 3장
 import parking1 from "./assets/a.jpg";
 import parking2 from "./assets/b.jpg";
 import parking3 from "./assets/c.jpg";
 
-/* ----------------------- 배경 슬라이더 (고정/스크롤 모드) ----------------------- */
-/**
- * props:
- *  - images: string[]  (필수)
- *  - interval: number  (ms, 기본 5000)
- *  - mode: 'fixed' | 'scroll'  (기본 'fixed')
- *    - 'fixed'  : 화면(Viewport) 기준 고정, 스크롤해도 항상 꽉 채움
- *    - 'scroll' : 콘텐츠 높이에 맞춰 함께 스크롤
- */
+/* ----------------------- 배경 슬라이더 ----------------------- */
 const BackgroundSlider = ({ images, interval = 6000, mode = "fixed" }) => {
   const [index, setIndex] = useState(0);
 
@@ -48,14 +41,50 @@ const BackgroundSlider = ({ images, interval = 6000, mode = "fixed" }) => {
             className="h-full w-full bg-center bg-cover"
             style={{ backgroundImage: `url(${src})` }}
           />
-          {/* 가독성 오버레이 */}
           <div className="absolute inset-0 bg-neutral-100/70 backdrop-blur-[1px]" />
         </div>
       ))}
     </div>
   );
 };
-/* ------------------------------------------------------------------------- */
+/* -------------------------------------------------------------- */
+
+/* ---------------------------- Modal ---------------------------- */
+function Modal({ open, onClose, title, children }) {
+  // ESC 닫기 + 바디 스크롤 잠금
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+        {title && <h2 className="mb-2 text-xl font-bold">{title}</h2>}
+        <div className="text-gray-700">{children}</div>
+        <div className="mt-6 flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="rounded-lg bg-gray-900 px-4 py-2 text-white hover:bg-black"
+          >
+            확인
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+/* -------------------------------------------------------------- */
 
 // 타입 메타(아이콘/색)
 const TYPE_META = {
@@ -91,10 +120,19 @@ const SECTORS = ["A", "B", "C", "D", "E"];
 const Data = () => {
   const [originparkingTypes, setOriginparkingTypes] = useState([]);
   const [currentTime, setCurrentTime] = useState("");
-  const [selectedType, setSelectedType] = useState(null); // null=전체
-  const [selectedSector, setSelectedSector] = useState(null); // null=전체
+  const [selectedType, setSelectedType] = useState(null);
+  const [selectedSector, setSelectedSector] = useState(null);
   const [onlyAvailable, setOnlyAvailable] = useState(false);
-  const [search, setSearch] = useState(""); // 차량번호 검색
+  const [search, setSearch] = useState("");
+
+  const [welcomeOpen, setWelcomeOpen] = useState(
+    () => !sessionStorage.getItem("parking_welcome_seen")
+  );
+  // 확인 눌렀을 때 닫고, 그 때 세션에 기록
+  const closeWelcome = () => {
+    setWelcomeOpen(false);
+    sessionStorage.setItem("parking_welcome_seen", "1");
+  };
 
   // 초기 데이터 & 시계
   useEffect(() => {
@@ -111,13 +149,11 @@ const Data = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // 전체/타입별 가용 카운트 (사이드/범례 표시에 활용)
   const typeCountsAll = useMemo(
     () => countArea(originparkingTypes),
     [originparkingTypes]
   );
 
-  // 전체 통계
   const summary = useMemo(() => {
     const total = originparkingTypes.length;
     const available = originparkingTypes.filter((s) => s.parkable).length;
@@ -126,7 +162,6 @@ const Data = () => {
     return { total, available, occupied, rate };
   }, [originparkingTypes]);
 
-  // 섹터별 통계
   const sectorStats = useMemo(() => {
     const map = {};
     SECTORS.forEach((sec) => {
@@ -140,7 +175,6 @@ const Data = () => {
     return map;
   }, [originparkingTypes]);
 
-  // 필터링된 표시 목록
   const displayed = useMemo(() => {
     return originparkingTypes
       .filter((s) => (selectedType ? s.type === selectedType : true))
@@ -153,7 +187,6 @@ const Data = () => {
       );
   }, [originparkingTypes, selectedType, selectedSector, onlyAvailable, search]);
 
-  // 카드 (타입별 뱃지 + 상태색)
   const SpotCard = ({ spot }) => {
     const meta = TYPE_META[spot.type];
     return (
@@ -176,7 +209,6 @@ const Data = () => {
           {spot.id}
         </span>
 
-        {/* Tooltip */}
         <div className="absolute bottom-full mb-2 w-max px-3 py-2 bg-gray-800 text-white text-sm rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
           <p>
             구역: {spot.sector}-{spot.id}
@@ -190,7 +222,6 @@ const Data = () => {
     );
   };
 
-  // 공통 버튼
   const Chip = ({ active, onClick, children }) => (
     <button
       className={`px-3 py-1.5 rounded-full text-sm border transition ${
@@ -204,7 +235,6 @@ const Data = () => {
     </button>
   );
 
-  // 범례
   const Legend = () => (
     <div className="flex flex-wrap gap-2">
       {Object.entries(TYPE_META)
@@ -234,7 +264,7 @@ const Data = () => {
         mode="fixed"
       />
 
-      {/* 상단 헤더: 타이틀 + 요약 지표 */}
+      {/* 상단 헤더 */}
       <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b">
         <div className="mx-auto max-w-7xl px-6 py-4">
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -346,7 +376,6 @@ const Data = () => {
               />
             </div>
 
-            {/* 범례 */}
             <div className="ml-auto">
               <Legend />
             </div>
@@ -356,13 +385,11 @@ const Data = () => {
 
       {/* 본문 */}
       <main className="mx-auto max-w-7xl px-6 py-6">
-        {/* 섹터별 블록 */}
         {(selectedSector ? [selectedSector] : SECTORS).map((sec) => {
           const list = displayed.filter((s) => s.sector === sec);
           const stat = sectorStats[sec];
           return (
             <section key={sec} className="mb-8">
-              {/* 섹터 헤더 */}
               <div className="mb-3 flex items-end justify-between">
                 <div>
                   <h2 className="text-xl font-bold text-gray-900">
@@ -381,7 +408,6 @@ const Data = () => {
                 </div>
               </div>
 
-              {/* 섹터 그리드 (자동 줄바꿈) */}
               <div className="bg-white/90 backdrop-blur-md rounded-2xl p-4 shadow">
                 {list.length === 0 ? (
                   <div className="py-8 text-center text-gray-500">
@@ -399,6 +425,11 @@ const Data = () => {
           );
         })}
       </main>
+
+      {/* ✅ 처음 화면 모달 */}
+      <Modal open={welcomeOpen} onClose={closeWelcome} title="안내">
+        <p>주차장 관리 화면입니다. “확인”을 누르면 이용을 시작합니다.</p>
+      </Modal>
     </div>
   );
 };
