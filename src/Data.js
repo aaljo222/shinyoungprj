@@ -428,7 +428,11 @@ const Data = () => {
 
       {/* ✅ 처음 화면 모달 */}
       <Modal open={welcomeOpen} onClose={closeWelcome} title="안내">
-        <p>주차장 관리 화면입니다. “확인”을 누르면 이용을 시작합니다.</p>
+        <p>
+          나신영 , 이건호, 전재석님 프로젝트를 AI 가 생성한 코드를 수정없이
+          사용한 WEB 페이지 입니다. 이것을 참고하셔서 메뉴 및 아이디어
+          구현하세요
+        </p>
       </Modal>
     </div>
   );
